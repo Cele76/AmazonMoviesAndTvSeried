@@ -1,0 +1,17 @@
+DOPO AVER SCARICATO LIBRERIE E DATI
+
+
+1. Il dataset originale è enorme e pienissimo di "buchi": la matrice utenti-film è quasi vuota perché il grosso degli utenti recensisce pochissimi film e la maggior parte dei film riceve pochissime recensioni. Per costruire un modello di raccomandazione che funzioni, serve una tabella più densa, dove ogni utente e ogni film abbiano un minimo di interazioni, altrimenti le predizioni sarebbero inaffidabili.
+
+2. Considero quindi di fissare una soglia minima di recensioni: almeno 5 per utente e 5 per film. Questo mi permette di eliminare chi ha un "passato" troppo scarso per capirne i gusti, e i prodotti troppo di nicchia per essere confrontati con altri.
+
+3. Dato che togliere utenti con meno di 5 recensioni fa automaticamente scendere il conteggio delle recensioni per alcuni film, che potrebbero così finire sotto la soglia minima,  applichiamo il filtro in modo iterativo, finché non diventa stabile 
+
+4. Anche dopo questo filtro, la tabella rimane troppo grande e ancora troppo sparsa per essere gestita in memoria e per dare risultati stabili. Prendiamo allora i più attivi: prendo i 3000 utenti con più recensioni e i 2000 film con più recensioni. Così seleziono un "core" dove i dati sono veramente densi e il modello può apprendere relazioni significative.
+
+5. Dato che dopo questa ulteriore selezione, qualche elemento potrebbe di nuovo scivolare sotto le soglie minime, quindi riapplico il filtro iterativo per sicurezza.
+
+6. C'è la possibilità che uno stesso utente abbia recensito più volte lo stesso film (es. formato diverso). Poiché il modello di collaborative filtering presuppone un solo voto per coppia utente-film, tengo solo l'ultima recensione, eliminando i duplicati.
+
+
+Risultato dataset oceanico e vuoto in un sottoinsieme compatto (circa 2600 utenti, 2000 film, 41mila voti), su cui posso addestrare modelli 
