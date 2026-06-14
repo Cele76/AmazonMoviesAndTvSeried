@@ -1,0 +1,158 @@
+# Storiografia dettagliata della Parte 3 — Sentiment Analysis
+
+### Versione "da zero": spiega ogni concetto prima di usarlo
+
+*Terzo e ultimo capitolo della storiografia, stesso stile dei precedenti. La Parte A spiega da zero i concetti nuovi (cos'è la sentiment analysis, la differenza fra classificazione e regressione, i quattro classificatori di laboratorio, le metriche giuste quando le classi sono sbilanciate, il bonus con gli LLM); la Parte B ripercorre il codice mappato sui punti della traccia del livello avanzato; la Parte C contiene tabella, glossario e note per il report — tra cui una che ti evita un errore facile e dannoso. I concetti già visti (NLP, TF-IDF, transformer, train/test) qui vengono solo richiamati: per i dettagli, vedi la storiografia della Parte 2.*
+
+---
+
+# PARTE A — I CONCETTI, SPIEGATI DA ZERO
+
+## A.1 Cos'è la sentiment analysis
+
+La **sentiment analysis** ("analisi del sentimento") è il compito di capire, da un testo, **che emozione/giudizio esprime**. Qui l'obiettivo è leggere una recensione e dire se è **negativa**, **neutra** o **positiva**.
+
+Non avendo etichette di sentimento già pronte, le si ricava dal voto, con la regola della traccia:
+
+> rating 1–2 → **negativo** · rating 3 → **neutro** · rating 4–5 → **positivo**
+
+Così ogni recensione ha un'etichetta, e il problema diventa: *dato il testo, indovinare l'etichetta*.
+
+## A.2 Classificazione contro regressione
+
+Qui c'è una differenza concettuale importante rispetto alle Parti 1 e 2. Lì si faceva **regressione**: prevedere un **numero** (il rating, es. 4,3). Qui si fa **classificazione**: prevedere una **categoria** tra poche possibili (negativo / neutro / positivo).
+
+> **Regressione** = "che voto darà?" (un numero su una scala). **Classificazione** = "in quale scatola va?" (una fra N etichette).
+
+Cambia anche come si misura l'errore: per la regressione si usava l'RMSE; per la classificazione si contano le risposte giuste e sbagliate (vedi A.6).
+
+## A.3 Dal testo ai numeri, di nuovo
+
+Per dare il testo a un classificatore servono di nuovo gli **embedding** (vedi Parte 2): si trasformano le recensioni in vettori. Si usano le **stesse due tecniche** richieste anche qui: una **frequenziale (TF-IDF)** e una **neurale (transformer `all-MiniLM-L6-v2`)**. La differenza rispetto alla Parte 2 è solo *quale* testo si vettorizza: qui il **titolo + il testo della recensione** (`title` + `text` del file user reviews), non più le descrizioni dei prodotti. La pulizia NLP qui usa la **lemmatizzazione** (in Parte 2 era lo stemming: entrambe tecniche di laboratorio, vedi Parte 2 A.3.3).
+
+## A.4 I quattro classificatori visti in laboratorio
+
+La traccia chiede di usare gli algoritmi di classificazione **visti in laboratorio**. Sono quattro, tutti forniti da scikit-learn.
+
+### A.4.1 Decision Tree (albero di decisione)
+È una **catena di domande sì/no** che porta a una risposta, come un diagramma di flusso. Esempio caricaturale: "il testo contiene 'terrible'? → se sì, probabilmente negativo; se no, contiene 'love'? → …". L'albero impara da solo quali domande fare. È intuitivo ma tende a **imparare a memoria** i dati di allenamento (overfitting).
+
+### A.4.2 Random Forest (foresta casuale)
+È un **insieme di tanti alberi diversi** che **votano** la risposta finale (la maggioranza vince). Costruendo molti alberi su porzioni diverse dei dati e mediandoli, si ottiene un modello molto più **robusto e accurato** di un singolo albero. È spesso il più forte tra i quattro.
+
+### A.4.3 Naive Bayes (e perché due varianti)
+È un classificatore **probabilistico**: stima la probabilità che un testo appartenga a ciascuna classe in base alle parole che contiene. È detto "naive" ("ingenuo") perché assume che le parole siano indipendenti tra loro — un'ipotesi falsa, ma che in pratica funziona sorprendentemente bene sul testo. Nel notebook compaiono **due versioni**, e la scelta non è casuale:
+- **MultinomialNB**: pensato per **conteggi/frequenze non negative** → si usa con il **TF-IDF**.
+- **GaussianNB**: pensato per **valori continui** che possono essere anche negativi → si usa con gli **embedding densi del transformer** (che contengono numeri negativi). Usare MultinomialNB sugli embedding darebbe errore; questa distinzione è una finezza corretta.
+
+### A.4.4 K-NN (classificatore)
+Stesso principio del K-NN già visto, ma per classificare: per etichettare una recensione si guardano le **K recensioni più vicine** (per embedding) e si prende l'etichetta di **maggioranza** tra loro.
+
+## A.5 Il problema dello sbilanciamento: perché l'accuracy inganna
+
+Le recensioni sono **fortemente sbilanciate** verso il positivo (la grande maggioranza è 4–5 stelle). Questo crea una trappola nella metrica più ovvia, l'**accuracy** (percentuale di risposte giuste):
+
+> Se l'80% delle recensioni è "positivo", un modello pigro che risponde **sempre "positivo"** azzecca l'80% — accuracy altissima, ma è **inutile**: non riconosce mai un negativo o un neutro.
+
+Per questo l'accuracy da sola **non basta** e va affiancata da metriche che guardano *tutte* le classi (A.6). Un rimedio lato modello è il parametro **`class_weight="balanced"`**: dice al classificatore di **dare più peso** alle classi rare (negativo, neutro), così non le ignora per inseguire la maggioranza.
+
+## A.6 Le metriche giuste: precision, recall, F1, confusion matrix
+
+Per una singola classe (es. "negativo"):
+- **Precision** ("precisione"): tra tutte le volte che il modello ha detto "negativo", **quante erano davvero negative**? Misura quanto ci si può fidare quando dice "negativo".
+- **Recall** ("richiamo"): tra tutte le recensioni davvero negative, **quante ne ha trovate**? Misura quanto è bravo a non farsele sfuggire.
+- **F1**: la media (armonica) di precision e recall in **un solo numero**, alto solo se *entrambe* sono alte.
+
+Poiché le classi sono tre, si usa l'**F1-macro**: la **media dell'F1 delle tre classi**, calcolata **senza pesarle** per quanto sono numerose. Così la classe "neutro" (piccola) conta quanto "positivo" (grande): è la metrica onesta quando i dati sono sbilanciati, ed è quella su cui si sceglie il modello migliore.
+
+La **confusion matrix** ("matrice di confusione") è la tabella che incrocia **classe reale** (righe) e **classe predetta** (colonne): sulla diagonale ci sono le risposte giuste, fuori dalla diagonale gli errori, e si vede *quali* classi vengono confuse con quali. Tipicamente la classe **neutro** è la più difficile (sta "in mezzo" e il modello la sbaglia spesso).
+
+## A.7 Il bonus: i modelli LLM e lo zero-shot
+
+Il punto bonus chiede di confrontare i classificatori "classici" con un metodo basato su **LLM** (*Large Language Model*, i grandi modelli di linguaggio come GPT o Claude). L'approccio è lo **zero-shot prompting**: si **chiede direttamente al modello** di classificare il sentimento di una recensione, **senza addestrarlo** sui nostri dati ("zero-shot" = "a zero esempi"). Per non incappare nei limiti di chiamata (rate limit), si usa un **piccolo sottoinsieme** del test (300 recensioni, come suggerito).
+
+Il notebook offre due strade:
+- **Opzione A — API LLM**: si interroga un modello via API (OpenAI/Anthropic). Richiede una chiave, quindi è lasciata commentata.
+- **Opzione B — transformer pre-addestrato (senza chiave)**: usa un modello già addestrato per il sentiment (`nlptown/...`, che predice 1–5 stelle) e ne mappa l'uscita su negativo/neutro/positivo. Gira su Colab senza alcuna chiave: è l'opzione comoda da eseguire.
+
+Si confronta poi l'accuratezza dell'LLM/transformer con quella del miglior modello scikit-learn **sugli stessi 300 esempi**.
+
+---
+
+# PARTE B — IL CODICE, PASSO PER PASSO
+
+*(Nel notebook questa parte è organizzata in "Step 0–4".)*
+
+## B.1 Caricamento review e creazione delle etichette — Step 0
+
+Si caricano le recensioni (in streaming, come nelle altre parti) e si crea la colonna **sentiment** applicando la regola 1-2/3/4-5 (A.1). Il campo testuale è **`title` + `text`** della recensione. Poiché il dataset è enorme e sbilanciato, si estrae un **sottocampione stratificato** (qui 20.000 recensioni): "stratificato" significa che **mantiene le stesse proporzioni** tra le classi del dataset completo, così il campione è rappresentativo. Il grafico della distribuzione rende visibile lo sbilanciamento verso il positivo.
+
+## B.2 Passo 1 della traccia — Preprocessing NLP su title + text — Step 1
+
+Stessa pipeline NLP delle altre parti (minuscolo, tokenizzazione, stopword, **lemmatizzazione**), applicata al testo delle recensioni. Produce il testo pulito su cui lavorerà il TF-IDF.
+
+## B.3 Passo 2 della traccia — Embedding TF-IDF e transformer — Step 2
+
+Si dividono i dati in train/test **stratificato 80/20** e si costruiscono i due embedding: **TF-IDF** (qui fino a 10.000 termini, uni+bigrammi) sul testo pulito, e **transformer** `all-MiniLM-L6-v2` (384 dim). Da qui in poi ogni recensione è rappresentata in entrambi i modi.
+
+## B.4 Passo 3 della traccia — Classificazione del sentiment — Step 3
+
+Si addestrano i **quattro classificatori** (A.4) su **entrambi** gli embedding, per un totale di otto combinazioni. Dettagli corretti del codice: **Naive Bayes** usa MultinomialNB sul TF-IDF e GaussianNB sul transformer (A.4.3); Decision Tree e Random Forest usano **`class_weight="balanced"`** per non schiacciare le classi rare (A.5). Per ogni combinazione si calcolano **accuracy, precision, recall e F1-macro**, si stila una tabella riassuntiva e un grafico, e per il **modello migliore** (per F1-macro) si stampano il report dettagliato e la **confusion matrix**.
+
+## B.5 Passo 4 della traccia (bonus) — Confronto con un metodo LLM — Step 4
+
+Si prende un sottoinsieme di **300** recensioni del test (testo **grezzo**: gli LLM preferiscono il testo originale, non quello pulito) e lo si classifica con l'LLM/transformer (Opzione A o B, A.7). Si confronta infine l'accuratezza con quella del miglior modello scikit-learn sugli **stessi** 300 esempi.
+
+---
+
+# PARTE C — RIEPILOGO, GLOSSARIO E NOTE PER IL REPORT
+
+## C.1 Tabella delle decisioni principali
+
+| Decisione | Perché |
+|---|---|
+| Etichette da rating (1-2/3/4-5) | trasforma i voti in un problema di classificazione del sentiment, come da traccia |
+| Testo = `title` + `text` della recensione | sono i campi richiesti per il livello avanzato |
+| Sottocampione **stratificato** (20k) | rende trattabile l'encoding mantenendo le proporzioni delle classi |
+| TF-IDF **e** transformer | le due famiglie di embedding richieste (frequenziale + neurale) |
+| MultinomialNB su TF-IDF, GaussianNB su transformer | il Multinomial vuole conteggi ≥0; gli embedding hanno valori negativi → serve il Gaussian |
+| `class_weight="balanced"` su alberi/foresta | contrasta lo sbilanciamento, evitando di ignorare negativo e neutro |
+| Metrica di scelta = **F1-macro** | onesta con classi sbilanciate: pesa uguale tutte e tre le classi |
+| Confusion matrix sul modello migliore | mostra *quali* classi vengono confuse (in genere il neutro) |
+| Bonus LLM su **300** esempi, testo grezzo | evita i rate limit e dà all'LLM il testo nel formato che preferisce |
+
+## C.2 Glossario (i termini nuovi della Parte 3)
+
+- **Sentiment analysis**: capire da un testo se esprime giudizio negativo, neutro o positivo.
+- **Classificazione**: prevedere una **categoria** (vs regressione, che prevede un numero).
+- **Decision Tree**: classificatore a catena di domande sì/no.
+- **Random Forest**: insieme di tanti alberi che votano; più robusto del singolo albero.
+- **Naive Bayes**: classificatore probabilistico che assume le parole indipendenti.
+- **MultinomialNB / GaussianNB**: Naive Bayes per conteggi (TF-IDF) / per valori continui (embedding).
+- **K-NN (classificatore)**: assegna l'etichetta di maggioranza dei K vicini.
+- **Accuracy**: percentuale di risposte giuste; ingannevole se le classi sono sbilanciate.
+- **Precision**: tra le previste "X", quante erano davvero X.
+- **Recall**: tra le vere X, quante ne ha trovate.
+- **F1**: media (armonica) di precision e recall in un solo numero.
+- **F1-macro**: media degli F1 delle classi senza pesarle per numerosità (metrica onesta qui).
+- **Confusion matrix**: tabella reale × predetto; mostra dove il modello si confonde.
+- **class_weight="balanced"**: dà più peso alle classi rare per non ignorarle.
+- **Stratificazione**: campionare/dividere mantenendo le proporzioni delle classi.
+- **LLM**: grande modello di linguaggio (es. GPT, Claude).
+- **Zero-shot prompting**: chiedere al modello di svolgere il compito senza addestrarlo con esempi.
+
+## C.3 Note oneste e consigli per il report
+
+**1. (LA PIÙ IMPORTANTE) Non copiare lo "spunto" generico di Step 3: contraddice i tuoi risultati.** Il commento nel notebook dice "tipicamente transformer + Random Forest danno F1 migliore del TF-IDF". I tuoi numeri dicono **l'opposto**: il modello migliore è **TF-IDF + Random Forest** (F1-macro ≈ 0,63), mentre **transformer + Random Forest è quasi il peggiore** (≈ 0,45). Se incolli quella frase generica nel report, scrivi una cosa smentita dai tuoi stessi dati.
+
+La storia vera — e più interessante — da raccontare è che **conta l'accoppiata embedding × classificatore**, non l'embedding da solo:
+- **TF-IDF** (sparso, altissima dimensione) va benissimo con gli **ensemble di alberi** (Random Forest): è il tuo modello migliore.
+- gli **embedding densi del transformer** vanno bene con il **K-NN** (≈ 0,61 contro lo ≈ 0,43 di TF-IDF + KNN: divario enorme), perché il KNN ragiona su **distanze** in uno spazio denso, dove gli embedding del transformer brillano.
+
+Questa osservazione (giustificata dai numeri) fa una figura molto migliore di una frase da manuale. *(Verifica che i valori coincidano dopo la riesecuzione: con il seme fissato dovrebbero essere identici.)*
+
+**2. Guarda F1-macro e confusion matrix, non l'accuracy.** Per lo sbilanciamento (A.5), l'accuracy alta (≈ 0,87 del modello migliore) è in buona parte merito della classe positiva facilissima (recall ≈ 0,99). La classe **neutro** è la più dura (recall molto basso, intorno a 0,21): è normale ed è il punto da commentare. Discuti anche l'effetto di `class_weight="balanced"` ed eventuali tecniche di bilanciamento (oversampling/undersampling) come sviluppo possibile.
+
+**3. Le tre parti usano campioni diversi: non dire "lo stesso campione".** Il progetto base lavora su ~800k recensioni, la sentiment analysis su ~400k (con lo stesso seme ma sottocampionamenti separati). Sono **analisi indipendenti**, e va benissimo così; ma nel report, quando dai numeri sul dataset, **tienili separati per parte** e non scrivere che è lo stesso campione.
+
+**4. Bonus LLM: dichiara quale opzione hai usato.** L'opzione B (transformer pre-addestrato, senza chiave) è quella eseguibile su Colab senza configurazione; l'opzione A (API) richiede una chiave ed è lasciata commentata. Nel report indica quale hai usato e riporta il confronto di accuratezza LLM vs miglior modello scikit-learn sui 300 esempi.
