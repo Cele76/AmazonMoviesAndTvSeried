@@ -1,137 +1,143 @@
 # Storiografia dettagliata della Parte 2 — Sistema di Raccomandazione Content-Based
 
-### Versione "da zero": spiega ogni concetto prima di usarlo
+### Versione "da zero": spiega ogni concetto prima di usarlo, e giustifica ogni scelta
 
-*Questo documento è il seguito della storiografia della Parte 1 e ne mantiene lo stile. La Parte A spiega da zero i concetti nuovi del content-based (soprattutto come si trasforma il testo in numeri); la Parte B ripercorre il codice del notebook passo per passo, mappato sui punti della traccia del livello intermedio; la Parte C contiene tabella delle decisioni, glossario dei termini nuovi e — importante — alcune note oneste su come leggere i risultati nel report. I concetti già spiegati nella Parte 1 (RMSE/MSE, K-NN, similarità coseno, train/test, PCA) qui vengono solo richiamati.*
+*Seguito della storiografia della Parte 1, stesso stile e stessa profondità. La Parte A spiega da zero i concetti nuovi del content-based, con esempi concreti; la Parte B ripercorre il codice mappato sui punti della traccia del livello intermedio, motivando ogni decisione presa; la Parte C contiene la tabella delle decisioni, il glossario dei termini nuovi e — molto importante — le note oneste su come leggere i risultati reali nel report. I concetti già spiegati nella Parte 1 (RMSE/MSE, K-NN, similarità coseno, train/test, PCA) qui vengono solo richiamati.*
 
 ---
 
 # PARTE A — I CONCETTI, SPIEGATI DA ZERO
 
-## A.1 Dal collaborative al content-based: cosa cambia
+## A.1 Dal collaborative al content-based: cosa cambia e perché serve
 
 Nella Parte 1 il Collaborative Filtering raccomandava guardando **solo i comportamenti**: chi ha votato cosa. Non sapeva nulla di *cosa fossero* i film. Il **content-based** ("basato sul contenuto") ribalta la prospettiva:
 
 > Per capire se un film ti piacerà, guardo **di cosa parla** (titolo, descrizione) e lo confronto con i film che hai già apprezzato. Se assomiglia a quelli, te lo consiglio.
 
-È lo stesso ragionamento di un amico che ti dice "se ti è piaciuto *Il Signore degli Anelli*, guarda *Lo Hobbit*: è dello stesso tipo". Non gli serve sapere cosa hanno votato gli altri; gli basta sapere che i due film si somigliano.
+È il ragionamento di un amico che ti dice "se ti è piaciuto *Il Signore degli Anelli*, guarda *Lo Hobbit*: è dello stesso tipo". Non gli serve sapere cosa hanno votato gli altri; gli basta sapere che i due film si somigliano.
 
-Il vantaggio principale rispetto al CF è sul **cold-start degli item**: un film appena uscito, che nessuno ha ancora votato, per il CF è invisibile (niente co-voti); per il content-based no, perché basta la sua descrizione testuale. Lo svantaggio è la tendenza all'**over-specializzazione**: se ti piacciono i film d'azione, ti propone *solo* azione, con poca varietà e poche sorprese.
+Perché vale la pena affiancarlo al CF? Per due limiti precisi del CF visti nella Parte 1:
+- **Cold-start sugli item**: un film appena uscito, che nessuno ha ancora votato, per il CF è invisibile (non ha co-voti su cui ragionare). Per il content-based no: basta la sua descrizione. È il vantaggio chiave.
+- **Spiegabilità**: il content-based può dire *perché* consiglia un film ("perché assomiglia a X che hai amato"), mentre il CF dice solo "utenti simili a te l'hanno apprezzato".
+
+Lo svantaggio in cambio è l'**over-specializzazione**: se ti piace l'azione, ti propone *solo* azione, con poca varietà. È il motivo per cui, alla fine, i due approcci si completano (Parte C).
 
 ## A.2 Il problema di fondo: trasformare il testo in numeri
 
-C'è un ostacolo pratico: gli algoritmi non capiscono le parole, capiscono solo i numeri. Quindi prima di poter dire "questi due film si somigliano" bisogna **trasformare il testo di ogni film in un vettore di numeri** (una lista di numeri). Questo vettore si chiama **embedding** ("immersione": il testo viene immerso in uno spazio numerico).
+C'è un ostacolo pratico: gli algoritmi capiscono solo i numeri, non le parole. Quindi, prima di poter dire "questi due film si somigliano", bisogna **trasformare il testo di ogni film in un vettore di numeri** (una lista di numeri). Questo vettore si chiama **embedding** ("immersione": il testo viene immerso in uno spazio numerico).
 
-Una volta che ogni film è un vettore, "quanto si somigliano due film" diventa semplicemente "quanto sono vicini i loro due vettori" — e questo si misura con la **similarità coseno**, esattamente come nella Parte 1 si misurava la somiglianza tra utenti.
+Una volta che ogni film è un vettore, "quanto si somigliano due film" diventa "quanto sono vicini i loro due vettori" — e si misura con la **similarità coseno**, esattamente come nella Parte 1 si misurava la somiglianza tra utenti. Tutto il lavoro della Parte 2 è quindi in tre tempi: (1) **pulire** il testo, (2) **trasformarlo in vettori** (in due modi diversi, come chiede la traccia), (3) **usare i vettori per prevedere i voti**.
 
-Tutto il lavoro della Parte 2 è quindi in tre tempi: (1) **pulire** il testo, (2) **trasformarlo in vettori** (in due modi diversi), (3) **usare i vettori per prevedere i voti**.
+## A.3 Il preprocessing NLP: pulire il testo (e perché ogni passo serve)
 
-## A.3 Il preprocessing NLP: pulire il testo
+NLP sta per *Natural Language Processing* ("elaborazione del linguaggio naturale"). Il testo grezzo è pieno di rumore, e ogni passo di pulizia ha uno scopo preciso:
 
-NLP sta per *Natural Language Processing* ("elaborazione del linguaggio naturale"): l'insieme delle tecniche per far digerire il testo a un computer. Prima di trasformare il testo in numeri lo si **pulisce**, perché il testo grezzo è pieno di rumore (maiuscole, punteggiatura, parole inutili). I passi standard, tutti visti in laboratorio:
+- **Minuscolo**: "Film" e "film" devono contare come la stessa parola. *Perché*: senza, il vocabolario raddoppierebbe inutilmente e la stessa parola peserebbe metà.
+- **Tokenizzazione**: spezzare il testo nelle sue parole (i *token*). "un bel film" → `["un", "bel", "film"]`. *Perché*: è l'unità su cui lavorano tutti i passi successivi.
+- **Rimozione di punteggiatura e numeri** (qui si tengono solo sequenze di lettere). *Perché*: virgole e cifre quasi mai aiutano a capire il *genere* di un film; sono rumore.
+- **Stopword**: parole comunissime ("the", "and", "of", "is") che compaiono ovunque e quindi **non distinguono** un testo dall'altro. *Perché* si tolgono: sapere che una descrizione contiene "the" non dice nulla; tenerle gonfierebbe i vettori di segnale inutile. La lista è fornita da NLTK.
+- **Stemming / lemmatizzazione**: "running", "runs", "ran" sono la stessa idea; ridurle a una forma comune evita di contarle come parole diverse.
+  - **Stemming** ("troncamento alla radice"): taglia le terminazioni con regole meccaniche ("running" → "run"). Veloce e grezzo (a volte produce non-parole, ma per il TF-IDF va benissimo). Nel notebook si usa il **Porter stemmer**.
+  - **Lemmatizzazione**: riconduce al lemma da vocabolario ("better" → "good"). Più precisa, più lenta.
 
-### A.3.1 Minuscolo, tokenizzazione, pulizia
-- **Minuscolo**: "Film" e "film" devono contare come la stessa parola, quindi si abbassa tutto a minuscolo.
-- **Tokenizzazione**: spezzare il testo nelle sue parole (i *token*). La frase "un bel film" diventa la lista `["un", "bel", "film"]`.
-- **Rimozione di punteggiatura e numeri**: virgole, punti, cifre di solito non aiutano a capire il *genere* di un film, quindi si tolgono (qui si tengono solo le sequenze di lettere).
-
-### A.3.2 Stopword
-Le **stopword** ("parole di arresto") sono le parole grammaticali più comuni — "the", "and", "of", "is" — che compaiono ovunque e quindi **non distinguono** un testo dall'altro. Si rimuovono perché sono rumore: sapere che una descrizione contiene "the" non dice niente sul film. La lista delle stopword inglesi è fornita da NLTK.
-
-### A.3.3 Stemming e lemmatizzazione
-Parole come "running", "runs", "ran" sono varianti dello stesso concetto. Ridurle a una forma comune evita di trattarle come parole diverse. Due tecniche:
-- **Stemming** ("troncamento alla radice"): taglia le terminazioni con regole meccaniche. "running" → "run", "studies" → "studi". È veloce e grezzo (a volte produce non-parole, ma va benissimo per il TF-IDF). Nel notebook si usa il **Porter stemmer**.
-- **Lemmatizzazione**: riconduce la parola al suo *lemma*, cioè la forma da vocabolario ("better" → "good"). È più precisa ma più lenta.
-
-Sono **due strade valide** viste in laboratorio per lo stesso scopo: nella Parte 2 si è scelto lo **stemming** (Porter), nella Parte 3 la **lemmatizzazione**. Non è un'incoerenza, è semplicemente l'uso di due tecniche equivalenti dello stesso toolkit; nel report basta dichiararlo.
+  Sono **due strade valide** dello stesso toolkit di laboratorio: la Parte 2 usa lo **stemming**, la Parte 3 la **lemmatizzazione**. *Perché la differenza non è un errore*: lo stemming basta quando conta la radice della parola (qui, descrizioni di prodotto); è solo bene dichiararlo nel report.
 
 ## A.4 Embedding 1 — la via frequenziale: Bag-of-Words e TF-IDF
 
-La prima famiglia di embedding richiesta dalla traccia è quella **basata sulla frequenza** delle parole.
+La prima famiglia di embedding richiesta è quella **basata sulla frequenza** delle parole.
 
-L'idea più semplice è il **Bag-of-Words** ("sacco di parole"): si dimentica l'ordine delle parole e si conta solo *quante volte* ogni parola del vocabolario compare nel testo. Ogni film diventa così un vettore lungo quanto il vocabolario, con dentro i conteggi.
+L'idea più semplice è il **Bag-of-Words** ("sacco di parole"): si dimentica l'ordine delle parole e si conta *quante volte* ogni parola del vocabolario compare nel testo. Ogni film diventa un vettore lungo quanto il vocabolario, con dentro i conteggi. Limite evidente: una parola comune come "movie" pesa quanto una rara e informativa come "samurai".
 
-Il **TF-IDF** è un Bag-of-Words più furbo, che pesa le parole. Il nome è la sigla dei suoi due ingredienti:
+Il **TF-IDF** corregge proprio questo, pesando le parole. Il nome è la sigla dei due ingredienti:
+- **TF** (*Term Frequency*): quanto spesso una parola compare in *quel* testo. Più compare, più descrive quel testo.
+- **IDF** (*Inverse Document Frequency*): quanto è **rara** la parola in *tutto* il catalogo. Una parola in pochissimi film ("samurai") è molto informativa; una quasi ovunque ("movie") lo è poco. L'IDF alza il peso delle rare e schiaccia le comuni.
 
-### A.4.1 TF e IDF
-- **TF** (*Term Frequency*, "frequenza del termine"): quanto spesso una parola compare in *quel* testo. Più compare, più è importante per descriverlo.
-- **IDF** (*Inverse Document Frequency*, "frequenza inversa nei documenti"): quanto è **rara** quella parola in *tutto* il catalogo. Una parola che compare in pochissimi film (es. "samurai") è molto informativa; una che compare quasi ovunque (es. "movie") lo è poco. L'IDF dà più peso alle parole rare e schiaccia quelle comuni.
+Il peso finale = TF × IDF: alto quando la parola è frequente *in quel film* ma rara *nel catalogo*. È esattamente ciò che caratterizza un film: le parole sue, non di tutti.
 
-Il peso finale di una parola = TF × IDF: alto quando la parola è frequente *in quel film* ma rara *nel catalogo*. È proprio ciò che caratterizza un film: le parole sue e non di tutti.
+**Esempio concreto.** Tre descrizioni: F1 "samurai sword honor", F2 "samurai battle honor", F3 "romantic comedy wedding". La parola "honor" compare in 2 film su 3 (IDF medio), "samurai" in 2 su 3, "wedding" in 1 su 3 (IDF alto → molto informativa). Per F3, "wedding" e "romantic" pesano tanto e lo allontanano dai due film di samurai; "honor" pesa poco perché diffusa. Risultato: F1 e F2 risultano simili tra loro e lontani da F3, **solo guardando le parole pesate**.
 
-### A.4.2 n-grammi, min_df, normalizzazione L2
-Tre dettagli di configurazione usati nel notebook:
-- **n-grammi**: oltre alle singole parole (*unigrammi*) si considerano anche le coppie consecutive (*bigrammi*), es. "star wars". Catturano espressioni che da sole le parole perderebbero. Qui si usano uni + bigrammi.
-- **min_df**: si scartano le parole che compaiono in meno di 2 documenti (rumore puro, refusi). Riduce dimensione e disturbo.
-- **Normalizzazione L2**: i vettori vengono portati a lunghezza 1. Trucco identico alla Parte 1: su vettori di lunghezza 1 il **prodotto scalare coincide con la similarità coseno**, quindi calcolare la somiglianza diventa una semplice moltiplicazione.
+Tre dettagli di configurazione del notebook, con motivazione:
+- **n-grammi (uni + bigrammi)**: oltre alle parole singole si considerano le coppie consecutive ("star wars"). *Perché*: "star" e "wars" separati perdono il senso dell'espressione; il bigramma lo cattura.
+- **`min_df=2`**: si scartano i termini presenti in un solo documento. *Perché*: refusi e parole uniche sono rumore puro e gonfiano il vocabolario senza aiutare.
+- **cap a 5000 termini + normalizzazione L2**: si tiene il vocabolario gestibile e si portano i vettori a lunghezza 1, così — come nella Parte 1 — il **prodotto scalare coincide con la similarità coseno** e calcolare la somiglianza diventa una moltiplicazione.
 
-### A.4.3 Pregi e limiti del TF-IDF
-È **veloce, leggero e interpretabile** (si vede esattamente quali parole pesano). Ma ha un grande limite: **non capisce il significato**. Per il TF-IDF "lotion" e "cream" sono due parole diverse e basta; non sa che sono sinonimi. E soffre con descrizioni cortissime o assenti, perché ha pochissime parole su cui lavorare.
+Pregi del TF-IDF: **veloce, leggero, interpretabile** (vedi quali parole pesano). Limite grosso: **non capisce il significato** — per lui "lotion" e "cream" sono parole diverse, non sa che sono sinonimi — e soffre con descrizioni cortissime o assenti.
 
 ## A.5 Embedding 2 — la via neurale: i transformer
 
-La seconda famiglia richiesta è quella **neurale**, basata sui **transformer**. Un transformer è una rete neurale pre-addestrata su enormi quantità di testo, che ha "imparato" il significato delle parole e delle frasi. Trasformando un testo, produce un vettore **denso** (qui 384 numeri) che cattura la **semantica**: il *senso* del testo, non solo le parole esatte.
+La seconda famiglia richiesta è quella **neurale**, basata sui **transformer**. Un transformer è una rete neurale pre-addestrata su enormi quantità di testo, che ha "imparato" il significato di parole e frasi. Trasformando un testo, produce un vettore **denso** (qui 384 numeri) che cattura la **semantica**: il *senso*, non solo le parole esatte.
 
-Il modello usato è **`all-MiniLM-L6-v2`** della libreria *Sentence-Transformers*: piccolo e veloce, pensato proprio per trasformare intere frasi in vettori confrontabili. La differenza concreta col TF-IDF: due film descritti con parole **diverse** ma di **significato simile** (stesso genere, stesso tono) avranno vettori vicini per il transformer, lontani per il TF-IDF.
+Il modello è **`all-MiniLM-L6-v2`** (libreria *Sentence-Transformers*): piccolo, veloce, pensato per trasformare intere frasi in vettori confrontabili. *Perché proprio lui*: è lo standard "leggero" per questo compito, gira bene su Colab e non richiede addestramento.
 
-Pregi: robusto a sinonimi, parafrasi, descrizioni brevi. Limiti: è una "scatola nera" (non vedi *perché* due testi sono vicini) ed è più pesante (modello da scaricare, conviene la GPU).
+**Esempio concreto della differenza col TF-IDF.** Due descrizioni: "a heartwarming story about a dog" e "an emotional tale of a loyal pet". Non condividono quasi nessuna parola, quindi per il **TF-IDF sono lontane**. Ma significano la stessa cosa, quindi per il **transformer sono vicine**. Questo è il valore aggiunto del neurale: coglie sinonimi, parafrasi e tono anche senza parole in comune.
+
+Pregi: robusto a sinonimi, parafrasi, descrizioni brevi. Limiti: è una "scatola nera" (non vedi *perché* due testi sono vicini) e più pesante (modello da scaricare; meglio la GPU).
 
 ## A.6 Perché due testi diversi: pulito al TF-IDF, grezzo al transformer
 
-Un dettaglio importante e voluto del notebook: al TF-IDF si dà il **testo pulito** (minuscolo, senza stopword, stemmato), al transformer si dà il **testo grezzo**. Il motivo è che il transformer è stato addestrato sul **linguaggio naturale vero**: dandogli parole spezzate e prive di grammatica (es. "studi" al posto di "studies"), lo si confonde e gli si toglie proprio l'informazione di contesto che lo rende forte. Il TF-IDF invece beneficia della pulizia, perché ragiona sui conteggi e non sul senso.
+Dettaglio voluto e importante: al TF-IDF si dà il **testo pulito** (minuscolo, senza stopword, stemmato), al transformer il **testo grezzo**. *Perché*: il transformer è stato addestrato sul **linguaggio naturale vero**; dandogli parole spezzate e senza grammatica ("stori" al posto di "story") gli si toglie proprio l'informazione di contesto che lo rende forte. Il TF-IDF invece beneficia della pulizia, perché ragiona sui conteggi e non sul senso. Dare lo stesso identico input a entrambi sarebbe stato più "simmetrico" ma **peggiore** per il transformer.
 
 ## A.7 Prevedere il voto col content-based: K-NN sul contenuto
 
-Una volta che ogni film è un vettore, si prevede il voto con un **K-NN** — lo stesso meccanismo della Parte 1, ma con un "simile" diverso. Per ogni utente:
+Una volta che ogni film è un vettore, si prevede il voto con un **K-NN** — stesso meccanismo della Parte 1, ma con un "simile" diverso. Per ogni utente:
 
-> Voglio prevedere quanto darà al *Film X* (che non ha visto). Tra i film che **ha già votato**, cerco i K **più simili per contenuto** al *Film X*, e faccio la **media dei suoi voti** su quei film, pesata dalla similarità.
+> Voglio prevedere quanto darà al *Film X* (non visto). Tra i film che **ha già votato**, cerco i K **più simili per contenuto** al *Film X* e faccio la **media dei suoi voti** su quei film, pesata dalla similarità.
 
-La differenza cruciale rispetto al K-NN del CF: lì "due film simili" significava "votati in modo simile dalla comunità"; qui significa "con descrizione testuale simile". Qui inoltre i vicini si cercano **dentro lo storico del singolo utente**, non tra tutti gli utenti. Se un utente non ha vicini utili (similarità tutte nulle), si ricade sulla **sua media** (o sulla media globale). Le previsioni si **clippano** nell'intervallo [1, 5].
+Differenza cruciale rispetto al K-NN del CF: lì "due film simili" = "votati in modo simile dalla comunità"; qui = "con descrizione testuale simile". E i vicini si cercano **dentro lo storico del singolo utente**, non tra tutti gli utenti.
+
+**Perché questa implementazione (e non un K-NN "da libreria" qualsiasi).** Predire *per ogni coppia (utente, film di test)* usando come vicini **solo i film che quell'utente ha già visto** è la logica corretta del content-based personalizzato: la previsione dipende dal gusto del singolo, non da una media globale. La similarità è il **prodotto scalare** tra embedding normalizzati (= coseno, gratis), e la media è **pesata** dalla similarità (i film più simili contano di più). Due scelte di robustezza: **K=20** vicini (abbastanza da mediare il rumore senza diluire troppo il gusto; con pochi film visti si usano quelli disponibili) e un **fallback alla media dell'utente** (o globale) quando non ci sono vicini utili, con **clip** finale in [1, 5] per restare nella scala dei voti.
+
+**Esempio.** L'utente ha votato: "Matrix" 5, "Inception" 4, "Notting Hill" 2. Per prevedere "Blade Runner": è molto simile (per contenuto) a Matrix e Inception, poco a Notting Hill → la previsione è una media pesata vicina a 4,5–5. Per "Pretty Woman": simile a Notting Hill → previsione bassa. Il sistema usa il *contenuto* per capire a quali gusti dell'utente agganciarsi.
 
 ## A.8 Valutare e confrontare
 
-Si misura la qualità con **RMSE e MSE** (vedi Parte 1, A.6): più bassi, meglio. Due confronti, richiesti dalla traccia:
+Si misura la qualità con **RMSE e MSE** (Parte 1, A.6): più bassi, meglio. Due confronti richiesti:
 1. **TF-IDF contro transformer**: stesso K-NN, stesso test, cambia solo l'embedding.
-2. **Content-based contro Collaborative Filtering**: per essere onesti si usa lo **stesso split train/test** della Parte 1, così i numeri sono confrontabili a parità di condizioni.
+2. **Content-based contro Collaborative Filtering**: per essere onesti si usa lo **stesso split train/test** della Parte 1, così i numeri sono confrontabili a parità di condizioni (vedi però l'asterisco sulla copertura in C.3).
 
 ---
 
 # PARTE B — IL CODICE, PASSO PER PASSO
 
-*(Le sezioni del notebook per questa parte vanno da 3.0 a 3.7.)*
+*(Sezioni del notebook da 3.0 a 3.7.)*
 
-## B.1 Caricamento dei metadati testuali — sezione 3.0/3.1
+## B.1 Caricamento dei metadati testuali — sezioni 3.0/3.1
 
-Per il content-based servono **i metadati dei prodotti**, non solo i voti: in particolare i campi **`title` e `description`** richiesti dalla traccia. Il codice è **autosufficiente**: se i metadati sono già stati caricati nella Parte 1 (sezione 1.4) li riusa, altrimenti li carica leggendo il file grezzo riga per riga (lo stesso accorgimento della Parte 1, che evita l'errore del lettore automatico quando un campo annidato cambia tipo).
+Per il content-based servono **i metadati dei prodotti**, in particolare i campi **`title` e `description`** richiesti dalla traccia. Il codice è **autosufficiente** (*perché*: così la Parte 2 gira anche da sola, senza dipendere dall'ordine esatto delle celle): se i metadati sono già caricati nella Parte 1 li riusa, altrimenti li carica leggendo il file grezzo riga per riga — lo stesso accorgimento della Parte 1, che evita l'errore del lettore automatico quando un campo annidato cambia tipo.
 
-Il testo di ogni film è costruito come `title + ". " + description`. Si tengono **solo i film presenti nel nucleo filtrato del CF** (`df_cf`) e con testo non vuoto, e si crea una mappa `item → riga` per ritrovare ogni film nelle matrici di embedding. Il notebook stampa anche la **percentuale di copertura** (quanti film del CF hanno testo usabile): è un numero da tenere d'occhio (vedi nota C.3).
+Il testo di ogni film è `title + ". " + description`. Si tengono **solo i film del nucleo CF** (`df_cf`) e con testo non vuoto (*perché*: confrontiamo il content-based con lo stesso insieme di film del CF), e si crea una mappa `item → riga` per ritrovarli nelle matrici di embedding. Il notebook stampa la **percentuale di copertura** (quanti film del CF hanno testo usabile): numero cruciale, vedi C.3.
 
 ## B.2 Passo 1 della traccia — Preprocessing NLP — sezione 3.1
 
-Si applica la pipeline NLP (A.3) al testo di ogni film: minuscolo, tokenizzazione delle sole lettere, rimozione stopword, **stemming Porter**, scarto dei token cortissimi. Il risultato (`text_clean`) alimenterà il TF-IDF; al transformer andrà invece il testo grezzo (A.6). Il notebook mostra un esempio "prima/dopo" per rendere visibile l'effetto della pulizia.
+Pipeline NLP (A.3) sul testo di ogni film: minuscolo, tokenizzazione delle sole lettere, rimozione stopword, **stemming Porter**, scarto dei token cortissimi. Il risultato (`text_clean`) alimenta il TF-IDF; al transformer va il testo grezzo (A.6). Il notebook mostra un esempio "prima/dopo" per rendere visibile l'effetto.
 
 ## B.3 Passo 2 della traccia — Embedding TF-IDF e transformer — sezioni 3.2 e 3.3
 
-- **3.2 — TF-IDF**: si costruisce la matrice TF-IDF (uni+bigrammi, `min_df=2`, fino a 5000 termini) e la si normalizza in L2. Ogni film diventa un vettore sparso.
-- **3.3 — Transformer**: si caricano gli embedding densi a 384 dimensioni con `all-MiniLM-L6-v2`, già normalizzati in uscita.
+- **3.2 — TF-IDF**: matrice TF-IDF (uni+bigrammi, `min_df=2`, max 5000 termini), normalizzata L2. Ogni film → vettore sparso. (Motivazioni dei parametri in A.4.)
+- **3.3 — Transformer**: embedding densi a 384 dimensioni con `all-MiniLM-L6-v2`, già normalizzati.
 
-Così si hanno **due rappresentazioni** dello stesso catalogo, una frequenziale e una neurale, pronte per il confronto.
+Si ottengono così **due rappresentazioni** dello stesso catalogo, una frequenziale e una neurale, pronte per il confronto richiesto dal passo 4.
 
 ## B.4 Passo 3 della traccia — Predizione dei rating con K-NN — sezione 3.4
 
-La funzione `content_knn_predict` implementa il K-NN content-based descritto in A.7. Per ogni utente costruisce il suo "profilo" (i film visti nel **train** con i relativi voti), poi per ogni film del **test** calcola la similarità coseno (prodotto scalare tra vettori normalizzati) con i film del profilo, prende i **K=20** più simili e fa la media pesata dei voti, con ripiego sulla media utente/globale e clip in [1, 5]. La funzione viene eseguita **due volte**, una per il TF-IDF e una per il transformer, sullo **stesso test set del CF**: da qui escono RMSE e MSE delle due tecniche.
+La funzione `content_knn_predict` implementa il K-NN content-based (A.7). Per ogni utente costruisce il profilo (film visti nel **train** + voti), poi per ogni film del **test** calcola la similarità coseno con i film del profilo, prende i **K=20** più simili e fa la media pesata, con fallback alla media e clip in [1, 5]. Eseguita **due volte** (TF-IDF e transformer) sullo **stesso test set del CF**: da qui RMSE e MSE delle due tecniche. *Perché stesso test del CF*: è l'unica condizione per poi confrontare onestamente CF e content-based al passo 5.
 
 ## B.5 (Extra) Visualizzazioni della similarità — sezione 3.5
 
-Questa sezione **non è richiesta dalla traccia**, ma rende il lavoro molto più leggibile (e fa scena nel report e all'esame). Comprende: le **matrici di similarità** film×film (calcolate una sola volta e riusate); una funzione "**film simili a X**" che affianca i vicini secondo TF-IDF e secondo transformer, per *vedere* dove i due metodi concordano; una **heatmap** di somiglianza tra una dozzina di film noti; una **mappa semantica 2D** (PCA sugli embedding del transformer, vedi Parte 1 A.7) in cui film simili finiscono vicini; e una **raccomandazione "spiegata"** per un singolo utente, che mostra *perché* un film viene consigliato (i film già visti e simili che hanno pesato di più). Su questa cella vedi però la nota C.3.
+**Non richiesta dalla traccia**, ma rende il lavoro leggibile (e fa scena). A che serve ciascuna cella:
+- **Matrici di similarità** film×film, calcolate una volta e riusate (*perché*: evita di rifare lo stesso conto in ogni cella).
+- **"Film simili a X"**: affianca i vicini secondo TF-IDF e secondo transformer, per *vedere* dove i due metodi concordano e dove no (tipicamente il TF-IDF lega film con le stesse parole/saga, il transformer film dello stesso genere/tono).
+- **Heatmap** di somiglianza tra ~12 film noti: mostra a colpo d'occhio che il transformer separa meglio i gruppi.
+- **Mappa semantica 2D** (PCA sugli embedding del transformer, Parte 1 A.7): film simili finiscono vicini nel piano.
+- **Raccomandazione "spiegata"** per un utente: mostra *perché* un film è consigliato (i film visti e simili che hanno pesato di più). Su questa cella, leggi bene la nota C.3.
 
 ## B.6 Passo 4 della traccia — Valutazione critica TF-IDF vs transformer — sezione 3.6
 
-Si confrontano le due tecniche con tabella RMSE/MSE e grafico, più un controllo qualitativo dei vicini. Da commentare nel report: quale ha errore minore **sui tuoi dati**, e perché (il transformer tende a vincere quando ci sono sinonimi e descrizioni ricche; il TF-IDF regge bene ed è interpretabile quando contano le parole-chiave esatte, come le saghe).
+Tabella RMSE/MSE + grafico + controllo qualitativo dei vicini. Da commentare: quale ha errore minore **sui tuoi dati** e perché (il transformer tende a vincere con sinonimi e descrizioni ricche; il TF-IDF regge ed è interpretabile quando contano le parole-chiave esatte, come le saghe). Vedi in C.3 perché su questa categoria il vantaggio del transformer si assottiglia.
 
 ## B.7 Passo 5 della traccia — Valutazione critica CF vs content-based — sezione 3.7
 
-Tabella finale che mette a confronto il CF della Parte 1 (KNNBaseline e SVD) con il miglior content-based, **sullo stesso split**. Punti da discutere: accuratezza sul rating, **cold-start** (il content-based copre film nuovi/di coda lunga), **copertura** (dipende dalla disponibilità dei metadati), interpretabilità contro serendipità. La conclusione naturale è che i due approcci sono **complementari** e che un sistema **ibrido** (CF + content) prenderebbe il meglio di entrambi.
+Tabella finale CF (KNNBaseline e SVD della Parte 1) contro il miglior content-based, **sullo stesso split**. Punti da discutere: accuratezza sul rating, **cold-start** (il content-based copre film nuovi/di coda lunga), **copertura** (dipende dai metadati), interpretabilità contro serendipità. Conclusione naturale: approcci **complementari**, un sistema **ibrido** (CF + content) prenderebbe il meglio di entrambi.
 
 ---
 
@@ -141,15 +147,16 @@ Tabella finale che mette a confronto il CF della Parte 1 (KNNBaseline e SVD) con
 
 | Decisione | Perché |
 |---|---|
-| Caricamento metadati riga-per-riga + riuso di quelli già caricati | robusto agli schemi irregolari ed evita di riscaricare il file |
-| Testo = `title` + `description` | sono i campi richiesti dalla traccia per il content-based |
-| Pulizia con stemming Porter | tecnica NLP da laboratorio; veloce e adatta al TF-IDF |
+| Caricamento metadati riga-per-riga + riuso | robusto agli schemi irregolari ed evita di riscaricare il file |
+| Testo = `title` + `description` | sono i campi richiesti dalla traccia |
+| Solo i film del nucleo CF (`df_cf`) | per confrontare il content-based sullo stesso insieme del CF |
+| Pulizia con stemming Porter | tecnica NLP da laboratorio, veloce e adatta al TF-IDF |
 | Testo **pulito** al TF-IDF, **grezzo** al transformer | il transformer è addestrato sul linguaggio naturale: lo stemming lo penalizzerebbe |
-| TF-IDF uni+bigrammi, `min_df=2`, L2-norm | cattura le espressioni, taglia il rumore, rende il coseno un prodotto scalare |
-| Transformer `all-MiniLM-L6-v2` (384 dim) | piccolo, veloce, pensato per vettorizzare frasi |
-| K-NN content-based con vicini **nel profilo dell'utente** | è la logica corretta del content-based: confronto col gusto del singolo |
-| **Stesso split train/test del CF** | unica condizione per confrontare onestamente CF e content-based |
+| TF-IDF uni+bigrammi, `min_df=2`, max 5000, L2 | cattura le espressioni, taglia il rumore, tiene il vocabolario gestibile, rende il coseno un prodotto scalare |
+| Transformer `all-MiniLM-L6-v2` (384 dim) | piccolo, veloce, standard per vettorizzare frasi su Colab |
+| K-NN con vicini **nel profilo dell'utente**, K=20, peso per similarità | è la logica corretta del content-based personalizzato; K=20 media il rumore senza diluire il gusto |
 | Fallback alla media + clip in [1,5] | gestisce gli utenti senza vicini utili e tiene le previsioni nella scala dei voti |
+| **Stesso split train/test del CF** | unica condizione per confrontare onestamente CF e content-based |
 
 ## C.2 Glossario (i termini nuovi della Parte 2)
 
@@ -170,15 +177,16 @@ Tabella finale che mette a confronto il CF della Parte 1 (KNNBaseline e SVD) con
 - **Semantica**: il *significato* del testo, ciò che il transformer coglie e il TF-IDF no.
 - **K-NN content-based**: prevede il voto dai K film più simili **per contenuto** già visti dall'utente.
 - **Mappa semantica**: grafico 2D (via PCA) in cui film simili per significato appaiono vicini.
+- **Copertura**: quota di film/coppie di test che hanno testo usabile (e quindi gestibili dal content-based).
 - **Over-specializzazione**: difetto del content-based di proporre sempre lo stesso tipo di prodotto.
 - **Sistema ibrido**: combinazione di CF e content-based, che ne unisce i punti di forza.
 
-## C.3 Note oneste e consigli per il report
+## C.3 Note oneste e consigli per il report (con i numeri reali)
 
-**1. I metadati di `Movies_and_TV` sono "magri": il content-based ne risente.** Nel nucleo filtrato i titoli sono in media molto corti (intorno alle 2–3 parole) e una grossa fetta delle descrizioni è vuota (lo si vede nella sezione 1.4). Conseguenza: le similarità tra film sono spesso **basse** e la **raccomandazione "spiegata" (Cella E)** può risultare poco convincente — film consigliati con somiglianze bassissime e, a volte, **titoli mancanti**. Non è un bug, è la natura di questa categoria. Per il report hai due strade oneste: (a) scegliere per la demo un utente i cui film *hanno* titolo e similarità decenti; oppure (b) tenere la schermata e commentarla con una riga sincera ("su questa categoria i metadati sono sparsi, quindi il content-based è strutturalmente più debole"). Era uno dei rischi noti del passare da una categoria piccola a `Movies_and_TV`.
+**1. I metadati di `Movies_and_TV` sono "magri": il content-based ne risente, e si vede.** Nel nucleo filtrato i titoli sono in media **molto corti (circa 2,6 parole)** e una grossa fetta delle descrizioni è **vuota (circa il 44%)** — lo si legge nella sezione 1.4 del notebook. La conseguenza la si tocca con mano nella **raccomandazione "spiegata" (Cella E)**: i film consigliati escono con **similarità bassissime** (nell'analisi, valori come **0,170 / 0,094 / 0,077**) e a volte **senza titolo**. In pratica, a un utente che ha visto *Goosebumps* il sistema arriva a proporre cose come *Grease Live!* o *Tai Chi for Beginners*, con "vicini" che non si somigliano davvero. **Non è un bug**: è la natura di questa categoria, ed era uno dei rischi noti del passare da una categoria piccola (es. `All_Beauty`) a `Movies_and_TV`. Per il report hai due strade oneste: (a) scegliere per la demo un utente i cui film *hanno* titolo e similarità decenti; oppure (b) tenere la schermata e commentarla con una riga sincera ("su questa categoria i metadati sono sparsi, quindi il content-based è strutturalmente più debole"). La seconda è anche più matura: mostra che hai capito i limiti dei dati.
 
-**2. Il confronto CF vs content-based va letto con un asterisco sulla copertura.** Il content-based viene valutato **solo sulle coppie di test il cui film ha testo usabile**; il CF invece copre tutto il test set. I due RMSE sono quindi **indicativi**, non calcolati esattamente sulle stesse coppie. Conviene dirlo nel report: se il content-based "sembra" più accurato, parte del merito è che lavora su un sottoinsieme più favorevole. Il punto vero da sottolineare non è "chi vince di un decimale", ma la **complementarità** (cold-start e copertura contro accuratezza sugli utenti attivi).
+**2. Il confronto CF vs content-based va letto con un asterisco sulla copertura.** Il content-based viene valutato **solo sulle coppie di test il cui film ha testo usabile**; il CF copre tutto il test set. I due RMSE sono quindi **indicativi**, non calcolati sulle stesse identiche coppie. Va detto nel report: se il content-based "sembra" più accurato, parte del merito è che lavora su un sottoinsieme più favorevole (i film con metadati). Il punto vero non è "chi vince di un decimale", ma la **complementarità**: il content-based aggiunge **copertura sul cold-start**, il CF resta più affidabile sul rating degli utenti attivi.
 
-**3. Scrivi i *tuoi* numeri.** RMSE e MSE dipendono dall'esecuzione (categoria, K, copertura). Nel report inserisci i valori che escono dalla tua run e collega il risultato alle **caratteristiche della categoria** (descrizioni corte/assenti → vantaggio del transformer ridotto, perché ha poco testo da cui estrarre semantica).
+**3. Scrivi i *tuoi* numeri e collegali alla categoria.** RMSE e MSE dipendono dall'esecuzione (categoria, K, copertura). Inserisci i valori della tua run e lega il risultato alle **caratteristiche dei dati**: descrizioni corte/assenti → il transformer ha poco testo da cui estrarre semantica, quindi il suo vantaggio sul TF-IDF si **assottiglia** proprio qui (mentre su categorie con descrizioni ricche il divario sarebbe maggiore). Questa è un'osservazione che lega numeri e dati, e fa una bella figura.
 
-**4. La sezione 3.5 è un valore aggiunto, non un requisito.** Le visualizzazioni non sono richieste dalla traccia: presentale come approfondimento. La mappa semantica e il confronto affiancato dei vicini sono ottimi per *mostrare* (non solo dire) la differenza tra embedding frequenziale e neurale.
+**4. La sezione 3.5 è valore aggiunto, non un requisito.** Le visualizzazioni non sono richieste: presentale come approfondimento. La mappa semantica e il confronto affiancato dei vicini sono ottimi per *mostrare* (non solo dire) la differenza tra embedding frequenziale e neurale.
