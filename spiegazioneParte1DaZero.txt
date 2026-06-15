@@ -1,21 +1,35 @@
 # Storiografia dettagliata della Parte 1 — Sistema di Raccomandazione Collaborative Filtering
 
+### Versione "da zero": spiega ogni concetto prima di usarlo
+
+*Questo documento è pensato per chi non ha mai sentito parlare di "collaborative filtering". La prima metà (Parte A) spiega tutti i concetti con parole semplici ed esempi. La seconda metà (Parte B) ripercorre il codice del notebook passo per passo, usando quei concetti. In fondo (Parte C) trovi un glossario e una tabella riassuntiva. Si può leggere tutto di fila, oppure usare il glossario come dizionario quando serve.*
+
+---
+
+# PARTE A — I CONCETTI, SPIEGATI DA ZERO
+
 ## A.1 Cos'è un sistema di raccomandazione
 
-Un **sistema di raccomandazione** è un programma che cerca di indovinare cosa ti piacerà, per suggerirtelo.
+Un **sistema di raccomandazione** è un programma che cerca di indovinare cosa ti piacerà, per suggerirtelo. È quello che fa Netflix quando ti propone un film, o Amazon quando ti dice "chi ha comprato questo ha comprato anche…", o Spotify con le playlist personalizzate.
+
 L'obiettivo è sempre lo stesso: tra migliaia di prodotti possibili, mostrarti quei pochi che hanno più probabilità di piacerti.
+
 Esistono due grandi famiglie di approcci:
-- **Content-based** ("basato sul contenuto"): guarda *cosa sono* i prodotti. Se hai amato film di fantascienza, ti propone altri film di fantascienza, perché analizza il genere, la trama, gli attori. (Parte 2 del progetto.)
+
+- **Content-based** ("basato sul contenuto"): guarda *cosa sono* i prodotti. Se hai amato film di fantascienza, ti propone altri film di fantascienza, perché analizza il genere, la trama, gli attori. (Questo è l'argomento della Parte 2 del progetto.)
 - **Collaborative filtering** ("filtraggio collaborativo"): non guarda affatto cosa sono i prodotti. Guarda solo *come si comportano le persone*. È l'argomento di questa Parte 1.
 
 ## A.2 Cos'è il Collaborative Filtering (l'idea centrale)
 
 La parola **collaborative** ("collaborativo") è la chiave: il sistema sfrutta il comportamento *collettivo* di tantissimi utenti per fare previsioni sul singolo.
 
+L'intuizione di fondo, in una frase, è:
+
 > **"Persone che in passato hanno avuto gusti simili, probabilmente avranno gusti simili anche in futuro."**
 
-Esempio concreto. Immagina che tu e io abbiamo visto e amato gli stessi tre film: *Inception*, *Interstellar*, *Tenet*. A questo punto io ho visto anche *Dunkirk*, che mi è piaciuto tantissimo, mentre tu non l'hai ancora visto. È ragionevole scommettere che *Dunkirk* piacerà anche a te. Perché? Non perché un programma abbia capito che sono tutti film di Christopher Nolan (non lo sa!), ma semplicemente perché **i nostri gusti, misurati sui voti passati, si assomigliano**.
+Esempio concreto. Immagina che tu e io abbiamo visto e amato gli stessi tre film: *Inception*, *Interstellar*, *Tenet*. A questo punto io ho visto anche *Dunkirk*, che ti è piaciuto tantissimo, mentre tu non l'hai ancora visto. È ragionevole scommettere che *Dunkirk* piacerà anche a te. Perché? Non perché un programma abbia capito che sono tutti film di Christopher Nolan (non lo sa!), ma semplicemente perché **i nostri gusti, misurati sui voti passati, si assomigliano**.
 
+Questa è tutta la magia del collaborative filtering: **non sa nulla dei film** (né genere, né trama, né regista). Sa solo **chi ha votato cosa, e con che voto**. Da questa informazione, sorprendentemente, riesce a fare ottime previsioni.
 
 ## A.3 La matrice utente–item (il cuore di tutto)
 
@@ -66,7 +80,7 @@ Per trovare i vicini serve un modo per **misurare quanto due utenti si assomigli
 - **Cosine similarity** ("similarità del coseno"): immagina i voti di ogni utente come una freccia in uno spazio. Due utenti con gusti identici hanno frecce che puntano nella stessa direzione; la cosine misura proprio quanto sono allineate (1 = stessa direzione = gusti identici, 0 = nessuna relazione).
 - **Pearson correlation** ("correlazione di Pearson"): è simile alla cosine, ma con un'accortezza in più: **tiene conto del fatto che alcuni utenti votano sempre alto e altri sempre basso**. Prima "centra" i voti (toglie la media di ciascun utente) e poi confronta. Così due persone che hanno gli *stessi gusti relativi* risultano simili anche se una è generosa (tanti 5) e l'altra è severa (tanti 3).
 
-se io do voti da "7 a 9" e tu da "3 a 5", in valore assoluto sembriamo diversissimi; ma se entrambi diamo il voto più alto agli stessi film, i nostri gusti *relativi* coincidono — ed è questo che Pearson cattura.
+Analogia: se io do voti da "7 a 9" e tu da "3 a 5", in valore assoluto sembriamo diversissimi; ma se entrambi diamo il voto più alto agli stessi film, i nostri gusti *relativi* coincidono — ed è questo che Pearson cattura.
 
 ### A.5.3 user-based contro item-based: due modi di definire "simile"
 
@@ -151,7 +165,11 @@ Arrivati qui abbiamo la matrice completamente riempita (voti veri dove c'erano, 
 
 "Top-N" significa appunto "i migliori N". Si escludono i film già visti perché una raccomandazione utile deve proporre qualcosa di **nuovo**.
 
-IL CODICE, PASSO PER PASSO
+A questo punto hai in mano tutti i concetti. La Parte B mostra come il codice li mette in pratica, in ordine.
+
+---
+
+# PARTE B — IL CODICE, PASSO PER PASSO
 
 La Parte 1 del notebook è divisa in due blocchi: un **Capitolo 1** che esplora e prepara i dati, e un **Capitolo 2** che costruisce e confronta i modelli. Seguiamo il flusso.
 
@@ -218,8 +236,9 @@ Questa sezione è un'aggiunta rispetto al progetto base (formalmente i metadati 
 **La griglia di prova.** Si testano **tutte le combinazioni** richieste dalla traccia (è una "grid search", cioè una ricerca esaustiva su una griglia di parametri):
 - **similarità**: cosine e pearson (A.5.2);
 - **modalità**: user-based e item-based (A.5.3);
-- **shrinkage**: 10, 50, 100 (A.5.4);
 - **K** (numero di vicini): 5, 10, 20, 30, 40, 60, 80, 100.
+
+(Lo **shrinkage**, A.5.4, non viene fatto variare: in Surprise incide solo sulla similarità `pearson_baseline`, non su cosine/pearson, quindi variarlo qui produrrebbe soltanto righe duplicate. È fissato a un valore unico.)
 
 **Come si sceglie la migliore.** Per ogni combinazione si allena sul train, si prevede sul test e si calcolano **RMSE** e **MSE** (A.6). Vince la combinazione con l'errore più basso. Il codice mostra le prime 10 in classifica e, per la combinazione vincente, disegna come cambia l'errore al variare di K (così si vede dove sta il minimo e quanto è sensibile il modello).
 
@@ -245,7 +264,9 @@ In questo modo non esiste mai in memoria la lista completa di tutte le coppie: o
 
 **Cosine via normalizzazione L2.** Per ottenere il K-Means "alla coseno" richiesto dalla traccia, si **normalizzano i vettori a lunghezza 1** prima di applicare il K-Means (vedi il trucco spiegato in A.7).
 
-**Scelta del numero di gruppi.** Il numero di cluster si sceglie guardando **Elbow** e **Silhouette** insieme (A.7), non a caso.
+**Scelta del numero di gruppi.** Il numero di cluster si sceglie guardando **Elbow** e **Silhouette** insieme (A.7), non a caso. Sui nostri dati il Silhouette è massimo a k=2 (~0,49), ma due soli macro-gruppi sono poco utili; k=6 cadeva addirittura in un minimo locale (~0,07, cioè gruppi molto sovrapposti). Si scelgono quindi i **2 macro-segmenti** corrispondenti a k=2 (la separazione più netta): tipicamente "utenti più generosi/positivi" vs "utenti più critici". Per confronto, k=4 dava un Silhouette intorno a ~0,35.
+
+**Un'avvertenza onesta (da scrivere nel report).** La matrice riempita è per il ~99,7% fatta di valori *predetti* dal K-NN (solo lo 0,3% sono voti reali), e questi sono dominati dalla baseline μ + bᵤ + bᵢ. Di conseguenza i cluster tendono a separare gli utenti soprattutto per **livello di voto / generosità ed attività**, più che per gusti di genere veri e propri: è un limite intrinseco del clustering su una matrice da CF, non un errore del codice. È giusto dichiararlo come limite nel report.
 
 **Clustering finale e profilazione.** Fissato il numero, si esegue il K-Means definitivo e si descrive ogni gruppo (quanti utenti, voto medio, recensioni medie). La profilazione serve a dare un **significato** ai gruppi (es. entusiasti, equilibrati, critici) e a mostrare che non sono numeri astratti ma comportamenti leggibili.
 
@@ -253,7 +274,9 @@ In questo modo non esiste mai in memoria la lista completa di tutte le coppie: o
 
 ## B.9 Passo 5 della traccia — Raccomandazioni Top-N
 
-**Come si costruisce la lista.** Per ogni utente si prendono i film **non ancora votati**, si ordinano per voto previsto (preso dalla matrice riempita al passo 3) dal più alto al più basso, e si scelgono i primi N (qui N = 10). È esattamente la logica della traccia ("considerando il rating predetto") e quanto spiegato in A.8.
+**Come si costruisce la lista.** Per ogni utente si prendono i film **non ancora votati**, si ordinano per voto previsto dal più alto al più basso, e si scelgono i primi N (qui N = 10). È esattamente la logica della traccia ("considerando il rating predetto") e quanto spiegato in A.8.
+
+**Un accorgimento sul punteggio.** La matrice riempita è "clippata" all'intervallo [1, 5]: per gli utenti generosi tantissimi film finiscono esattamente a 5,00, e ordinare su quei valori darebbe una classifica di **pari merito arbitraria** (decine di 5,00 indistinguibili). Per ordinare in modo sensato si usano allora le stime **non troncate** (in Surprise, `clip=False`): il punteggio grezzo (che può anche superare 5) varia da film a film e permette di mettere davvero in ordine le raccomandazioni. I numeri mostrati sono quindi *score di ranking*, non rating finali.
 
 **Lettura per gruppo.** Si mostrano le raccomandazioni per un utente rappresentativo di ciascun gruppo del passo 4, per verificare che segmenti diversi ricevano suggerimenti coerenti col loro profilo.
 
@@ -263,9 +286,65 @@ In questo modo non esiste mai in memoria la lista completa di tutte le coppie: o
 
 **Confronto equo.** L'SVD si allena sullo **stesso** train e si valuta sullo **stesso** test del K-NN. È la condizione per un confronto onesto: gli errori sono confrontabili solo se misurati sugli stessi dati. Si riportano RMSE e MSE dei due modelli in tabella e in un grafico, con la variazione percentuale dell'SVD rispetto al K-NN.
 
-**Confronto qualitativo delle liste.** Oltre agli errori, si confrontano le Top-10 dei due metodi per un utente campione, misurando **quanti film hanno in comune** (overlap) e **quanto sono dispersi i punteggi**. Serve a capire non solo chi sbaglia meno, ma anche chi propone raccomandazioni più varie.
+**Confronto qualitativo delle liste.** Oltre agli errori, si confrontano le Top-10 dei due metodi per un utente campione, misurando **quanti film hanno in comune** (overlap) e **quanto sono dispersi i punteggi**. Anche qui i punteggi si calcolano non troncati (`clip=False`) per entrambi i modelli: altrimenti, con i valori clippati a 5, le due liste sarebbero pieni di pareggi a 5,00 e la dispersione risulterebbe nulla, rendendo il confronto privo di senso. Serve a capire non solo chi sbaglia meno, ma anche chi propone raccomandazioni più varie.
 
 **Cosa aspettarsi (per il report).** In genere la Matrix Factorization gestisce meglio la sparsità grazie ai fattori latenti; il confronto numerico finale dirà quale dei due vince su questa categoria. Il limite comune a entrambi è che il collaborative filtering **non usa il contenuto** dei prodotti e soffre il cold-start: è proprio questa la ragione per cui il progetto prosegue con il **Content-Based** (Parte 2).
 
 ---
 
+# PARTE C — RIEPILOGO E GLOSSARIO
+
+## C.1 Tabella delle decisioni principali
+
+| Decisione | Perché |
+|---|---|
+| Campionamento in streaming con shuffle | categoria enorme: evita di saturare la RAM e garantisce un campione rappresentativo |
+| `parent_asin` come identificatore di film | unisce le varianti/edizioni dello stesso titolo in un unico film raccomandabile |
+| k-core **iterativo** | togliere utenti fa scendere film sotto soglia (e viceversa): serve ripetere fino a stabilità |
+| Cap solo sugli utenti, film intatti | limita il costo di calcolo conservando l'intero catalogo di film |
+| Numerazione ID solo sul train | simula lo scenario reale ed evita di valutare su utenti/film mai visti (cold-start) |
+| Matrice sparsa (CSR) | con sparsità ~100% una matrice piena sprecherebbe memoria |
+| `KNNBaseline` invece del K-NN puro | separa i bias utente/film dall'effetto vicinato → previsioni più robuste |
+| Filling **iterativo** utente per utente | stesso risultato, ma a memoria costante: niente più blocco da "tutte le coppie in un colpo solo" |
+| Normalizzazione **L2** prima del K-Means | rende la distanza euclidea equivalente alla cosine similarity richiesta dalla traccia |
+| Numero di cluster via Elbow + Silhouette | due criteri complementari per una scelta motivata, non a caso |
+| SVD sullo stesso train/test del K-NN | unica condizione per un confronto RMSE/MSE davvero equo |
+
+## C.2 Glossario (tutti i termini, in una riga)
+
+- **Sistema di raccomandazione**: programma che suggerisce ciò che probabilmente ti piacerà.
+- **Collaborative Filtering (CF)**: raccomanda guardando il comportamento collettivo degli utenti, non il contenuto dei prodotti.
+- **Content-based**: l'opposto del CF; raccomanda guardando *cosa sono* i prodotti (genere, descrizione…).
+- **Matrice utente–item**: tabella utenti × film con dentro i voti; quasi tutta vuota.
+- **Sparsità**: percentuale di celle vuote nella matrice (qui ~100%).
+- **K-NN (K-Nearest Neighbors)**: prevede un voto guardando i K utenti (o film) più simili.
+- **Cosine similarity**: misura di somiglianza basata sulla "direzione" dei gusti (1 = identici).
+- **Pearson**: simile alla cosine ma corregge chi vota sempre alto/basso (confronta i gusti *relativi*).
+- **user-based / item-based**: cercare "utenti simili a te" oppure "film simili a quelli che ami".
+- **K**: quanti vicini considerare nel K-NN.
+- **Shrinkage**: regolarizzazione che smorza le somiglianze calcolate su pochi dati.
+- **Bias / baseline**: tendenze di fondo (utente generoso/severo, film amato/bocciato); previsione di partenza μ + bᵤ + bᵢ.
+- **KNNBaseline**: K-NN + baseline (il modello usato qui).
+- **Matrix Factorization / SVD**: riassume utenti e film in pochi "fattori nascosti" e da lì prevede i voti.
+- **Fattori latenti**: caratteristiche nascoste (es. "quanto è d'azione") scoperte automaticamente dai dati.
+- **Train/test**: la parte di dati su cui si allena (80%) e quella su cui si valuta (20%).
+- **RMSE / MSE**: misure di errore delle previsioni; più basse = meglio (RMSE è nella scala dei voti).
+- **Cold-start**: l'impossibilità di prevedere per utenti/film mai visti in allenamento.
+- **Clustering**: dividere gli utenti in gruppi simili.
+- **K-Means**: algoritmo di clustering basato su "centri" che si aggiustano iterando.
+- **PCA**: comprime tante colonne in poche conservando l'informazione utile.
+- **Normalizzazione L2**: portare i vettori a lunghezza 1 (trucco per usare la cosine col K-Means).
+- **Elbow / Silhouette**: due criteri per scegliere il numero di cluster.
+- **Top-N**: i migliori N film consigliati a un utente, esclusi quelli già visti.
+- **k-core**: il "nucleo denso" di utenti/film che resta dopo aver tolto iterativamente quelli con poche interazioni.
+
+## C.3 Note sulle correzioni applicate
+
+**Sviste solo testuali (nessun effetto sui risultati).** In revisione del codice sono state corrette: una stampa che riportava una soglia sbagliata (ora legge direttamente le variabili di configurazione), un refuso in un commento e una nota di configurazione che consigliava una categoria diversa da quella realmente usata.
+
+**Correzioni dopo la prima esecuzione (per output più corretti).** Eseguendo il notebook sono emersi alcuni punti da sistemare, risolti così:
+
+1. **Raccomandazioni Top-N tutte a 5,00.** La matrice è clippata a [1, 5], quindi per gli utenti generosi moltissimi film uscivano a 5,00 e la Top-N era una classifica di pari merito casuale (con dispersione dei punteggi pari a zero). Risolto ordinando le raccomandazioni sulle stime **non troncate** (`clip=False`), sia per il K-NN sia per il confronto con SVD: ora le liste sono differenziate e la dispersione è significativa.
+2. **Numero di cluster.** Il valore di partenza (k=6) cadeva in un minimo del Silhouette (~0,07, gruppi sovrapposti). Portato a **k=2**, che ha il Silhouette massimo (~0,49) e dà la separazione più netta: due macro-segmenti (generosi/positivi vs critici).
+3. **Shrinkage inerte nella grid search.** Variare lo shrinkage su cosine/pearson generava solo righe duplicate nella classifica delle configurazioni; il loop è stato rimosso e lo shrinkage fissato a un valore unico (grid più pulita e più veloce, risultato invariato).
+4. **Messaggio sul confronto SVD.** Il testo "Variazione RMSE +5,8%" era ambiguo; ora dice esplicitamente che **SVD riduce l'RMSE del 5,8%** rispetto al K-NN (cioè è il modello migliore).
